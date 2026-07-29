@@ -5,11 +5,14 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win --x64"
+    "dist": "build.bat"
   },
   "build": {
     "appId": "com.osrs.chunkroller",
     "productName": "OSRS Chunk Roller",
+    "directories": {
+      "output": "release"
+    },
     "win": {
       "target": "dir",
       "icon": "icon.ico",

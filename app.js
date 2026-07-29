@@ -23,6 +23,16 @@ let combinedData = [];
 let fullNameArray = [];
 let lastRoll     = [];
 let jsonVisible  = false;
+let safeMode     = true;
+let sentThisRoll = false;
+
+function updateAddBtn() {
+  const btn = document.getElementById('addToCollectionBtn');
+  if (!btn) return;
+  const locked = safeMode && !sentThisRoll;
+  btn.disabled = locked;
+  btn.title    = locked ? 'Send list to Discord first (Safe Mode is ON)' : '';
+}
 
 // ─── Collection storage ────────────────────────────────────────────────────
 
@@ -158,7 +168,17 @@ function onDataReceived(raw) {
 
 // ─── Collection rendering ──────────────────────────────────────────────────
 
-function renderCollection() {
+let colViewMode  = 'text';
+const imageCache = new Map(); // name → url | null (so we don't re-fetch)
+
+async function fetchImageCached(name) {
+  if (imageCache.has(name)) return imageCache.get(name);
+  const url = await getWikiImage(name);
+  imageCache.set(name, url);
+  return url;
+}
+
+async function renderCollection() {
   const collection    = loadCollection();
   const collectionSet = new Set(collection.map(n => n.toLowerCase()));
   const query         = document.getElementById('colSearch').value.trim().toLowerCase();
@@ -209,22 +229,115 @@ function renderCollection() {
     return;
   }
 
-  displayItems.forEach(item => {
-    const chip = document.createElement('div');
-    chip.className = `col-chip ${item.have ? item.type : 'missing'}`;
-    chip.title     = item.name;
-    chip.textContent = item.name;
-    grid.appendChild(chip);
-  });
+  if (colViewMode === 'images') {
+    // Image mode — only show collected items as cards
+    const collectedItems = displayItems.filter(d => d.have);
+    if (collectedItems.length === 0) {
+      grid.innerHTML = '<div class="col-empty">No collected items match your search</div>';
+      return;
+    }
+    grid.className = 'col-grid col-grid-images';
+
+    collectedItems.forEach((item, i) => {
+      const card = document.createElement('div');
+      card.className = `col-card ${item.type}`;
+      card.id = `col-card-${i}`;
+      card.innerHTML = `
+        <div class="col-card-type ${item.type}">${item.type.toUpperCase()}</div>
+        <div class="col-card-image"><span class="img-loading">…</span></div>
+        <div class="col-card-name">${escapeHtml(item.name)}</div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // Fetch images in small batches to avoid hammering the API
+    const batchSize = 10;
+    for (let i = 0; i < collectedItems.length; i += batchSize) {
+      const batch = collectedItems.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async (item, j) => {
+        const idx    = i + j;
+        const card   = document.getElementById(`col-card-${idx}`);
+        if (!card) return;
+        const imgWrap = card.querySelector('.col-card-image');
+        const url = await fetchImageCached(item.name);
+        if (url) {
+          const img = document.createElement('img');
+          img.src = url; img.alt = item.name; img.loading = 'lazy';
+          imgWrap.innerHTML = '';
+          imgWrap.appendChild(img);
+        } else {
+          imgWrap.innerHTML = '<span class="no-image">No image</span>';
+        }
+      }));
+    }
+  } else {
+    // Text mode — chips
+    grid.className = 'col-grid';
+    displayItems.forEach(item => {
+      const chip = document.createElement('div');
+      chip.className = `col-chip ${item.have ? item.type : 'missing'}`;
+      chip.title     = item.name;
+      chip.textContent = item.name;
+      grid.appendChild(chip);
+    });
+  }
 }
 
 document.getElementById('colSearch').addEventListener('input', renderCollection);
+
+document.getElementById('viewTextBtn').addEventListener('click', () => {
+  colViewMode = 'text';
+  document.getElementById('viewTextBtn').classList.add('active');
+  document.getElementById('viewImagesBtn').classList.remove('active');
+  renderCollection();
+});
+
+document.getElementById('viewImagesBtn').addEventListener('click', () => {
+  colViewMode = 'images';
+  document.getElementById('viewImagesBtn').classList.add('active');
+  document.getElementById('viewTextBtn').classList.remove('active');
+  renderCollection();
+});
 
 document.getElementById('copyCollectionBtn').addEventListener('click', () => {
   const collection = loadCollection();
   navigator.clipboard.writeText(collection.join(',')).then(() => {
     showToast('✓ Collection copied to clipboard');
   });
+});
+
+document.getElementById('sendCollectionDiscordBtn').addEventListener('click', async () => {
+  const webhookUrl = localStorage.getItem('osrs-discord-webhook-collection');
+  if (!webhookUrl) {
+    showToast('Paste your collection webhook URL in Discord Settings first');
+    return;
+  }
+
+  const btn = document.getElementById('sendCollectionDiscordBtn');
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+
+  const collection = loadCollection();
+  const message = `📦 **Card Collection (${collection.length} cards)**\n${collection.join(',')}`;
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content: message }),
+    });
+    if (res.ok) {
+      showToast('✓ Collection sent to Discord');
+      btn.textContent = 'Sent!';
+      setTimeout(() => { btn.textContent = 'Send to Discord'; btn.disabled = false; }, 2000);
+    } else {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  } catch (err) {
+    showToast(`✗ Failed to send: ${err.message}`);
+    btn.textContent = 'Send to Discord';
+    btn.disabled = false;
+  }
 });
 
 // ─── Add to collection ─────────────────────────────────────────────────────
@@ -340,6 +453,8 @@ async function handleRoll5() {
 
   const picks = pickRandom5();
   lastRoll = picks;
+  sentThisRoll = false;
+  updateAddBtn();
 
   picks.forEach((pick, i) => cardsGrid.appendChild(buildCard(pick, i)));
   picks.forEach((_, i) => {
@@ -365,6 +480,102 @@ async function handleRoll5() {
   rollBtn.disabled = false;
 }
 
+// ─── Discord webhook ───────────────────────────────────────────────────────
+
+function loadWebhookUrl() {
+  return localStorage.getItem('osrs-discord-webhook') || '';
+}
+
+function saveWebhookUrl(url) {
+  localStorage.setItem('osrs-discord-webhook', url);
+}
+
+// Populate the webhook input with any saved URL on load
+document.getElementById('webhookUrl').value = loadWebhookUrl();
+document.getElementById('webhookUrlCollection').value = localStorage.getItem('osrs-discord-webhook-collection') || '';
+
+document.getElementById('saveWebhookBtn').addEventListener('click', () => {
+  const url = document.getElementById('webhookUrl').value.trim();
+  if (!url.startsWith('https://discord.com/api/webhooks/')) {
+    text('webhookStatus', '✗ Not a valid Discord webhook URL');
+    document.getElementById('webhookStatus').style.color = '#d05050';
+    return;
+  }
+  saveWebhookUrl(url);
+  text('webhookStatus', '✓ Roll webhook saved');
+  document.getElementById('webhookStatus').style.color = '#50c050';
+  setTimeout(() => text('webhookStatus', ''), 3000);
+});
+
+document.getElementById('saveWebhookCollectionBtn').addEventListener('click', () => {
+  const url = document.getElementById('webhookUrlCollection').value.trim();
+  if (!url.startsWith('https://discord.com/api/webhooks/')) {
+    text('webhookStatus', '✗ Not a valid Discord webhook URL');
+    document.getElementById('webhookStatus').style.color = '#d05050';
+    return;
+  }
+  localStorage.setItem('osrs-discord-webhook-collection', url);
+  text('webhookStatus', '✓ Collection webhook saved');
+  document.getElementById('webhookStatus').style.color = '#50c050';
+  setTimeout(() => text('webhookStatus', ''), 3000);
+});
+
+let discordPanelVisible = false;
+document.getElementById('discordToggle').addEventListener('click', () => {
+  discordPanelVisible = !discordPanelVisible;
+  document.getElementById('discordPanel').classList.toggle('hidden', !discordPanelVisible);
+  document.getElementById('discordToggleLabel').textContent =
+    discordPanelVisible ? '▼ Discord Settings' : '▶ Discord Settings';
+});
+
+document.getElementById('sendDiscordBtn').addEventListener('click', async () => {
+  if (lastRoll.length === 0) return;
+
+  const webhookUrl = loadWebhookUrl();
+  if (!webhookUrl) {
+    showToast('Paste your Discord webhook URL in Discord Settings first');
+    return;
+  }
+
+  const collection    = loadCollection();
+  const collectionSet = new Set(collection.map(n => n.toLowerCase()));
+  const newItems      = [...new Set(lastRoll.map(d => d.name))]
+    .filter(name => !collectionSet.has(name.toLowerCase()));
+
+  if (newItems.length === 0) {
+    showToast('All rolled items are already in your collection');
+    return;
+  }
+
+  const btn = document.getElementById('sendDiscordBtn');
+  btn.textContent = 'Sending…';
+  btn.disabled = true;
+
+  const names   = newItems.join(', ');
+  const message = `🎲 **Card Roll**\n${names}`;
+
+  try {
+    const res = await fetch(webhookUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ content: message }),
+    });
+    if (res.ok) {
+      showToast('✓ Sent to Discord');
+      sentThisRoll = true;
+      updateAddBtn();
+      btn.textContent = 'Sent!';
+      setTimeout(() => { btn.textContent = 'Send list to discord'; btn.disabled = false; }, 2000);
+    } else {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  } catch (err) {
+    showToast(`✗ Failed to send: ${err.message}`);
+    btn.textContent = 'Send list to discord';
+    btn.disabled = false;
+  }
+});
+
 // ─── Copy Roll ─────────────────────────────────────────────────────────────
 
 document.getElementById('copyRollBtn').addEventListener('click', () => {
@@ -381,6 +592,14 @@ document.getElementById('copyRollBtn').addEventListener('click', () => {
 document.getElementById('openCollectionBtn').addEventListener('click', () => showScreen('screenCollection'));
 document.getElementById('backBtn').addEventListener('click', () => showScreen('screenHome'));
 document.getElementById('roll5Btn').addEventListener('click', handleRoll5);
+
+document.getElementById('safeModeBtn').addEventListener('click', () => {
+  safeMode = !safeMode;
+  const btn = document.getElementById('safeModeBtn');
+  btn.textContent = `Safe Mode: ${safeMode ? 'ON' : 'OFF'}`;
+  btn.classList.toggle('active', safeMode);
+  updateAddBtn();
+});
 
 // ─── Electron IPC ──────────────────────────────────────────────────────────
 

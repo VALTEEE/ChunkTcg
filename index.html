@@ -57,6 +57,7 @@
         <button id="refreshBtn" class="btn btn-primary hidden">Refresh Data</button>
         <button id="roll5Btn" class="btn btn-gold" disabled>Roll 5</button>
         <button id="openCollectionBtn" class="btn btn-primary">Collection</button>
+        <button id="safeModeBtn" class="btn btn-safemode active">Safe Mode: ON</button>
       </div>
 
       <div id="dataInfo" class="data-info hidden">
@@ -74,6 +75,26 @@
         <div class="roll-actions">
           <button id="copyRollBtn" class="btn-small">Copy Roll</button>
           <button id="addToCollectionBtn" class="btn-small btn-small-gold">Add to Collection</button>
+          <button id="sendDiscordBtn" class="btn-small btn-small-discord">Send list to discord</button>
+        </div>
+      </div>
+
+      <!-- ── Discord settings ── -->
+      <div class="discord-section">
+        <button class="json-toggle" id="discordToggle">
+          <span id="discordToggleLabel">▶ Discord Settings</span>
+        </button>
+        <div id="discordPanel" class="discord-panel hidden">
+          <p class="discord-hint">In Discord: <strong>Edit Channel → Integrations → Webhooks → New Webhook → Copy URL</strong></p>
+          <div class="discord-input-row">
+            <input id="webhookUrl" class="json-search" type="text" placeholder="Roll webhook — https://discord.com/api/webhooks/…" autocomplete="off">
+            <button id="saveWebhookBtn" class="btn-small">Save</button>
+          </div>
+          <div class="discord-input-row">
+            <input id="webhookUrlCollection" class="json-search" type="text" placeholder="Collection webhook — https://discord.com/api/webhooks/…" autocomplete="off">
+            <button id="saveWebhookCollectionBtn" class="btn-small">Save</button>
+          </div>
+          <span id="webhookStatus" class="webhook-status"></span>
         </div>
       </div>
 
@@ -106,10 +127,15 @@
           <span id="colStats" class="col-stats"></span>
         </div>
         <button id="copyCollectionBtn" class="btn btn-primary">Copy All</button>
+        <button id="sendCollectionDiscordBtn" class="btn btn-primary btn-discord">Send to Discord</button>
       </div>
 
       <div class="col-toolbar">
         <input id="colSearch" class="json-search" type="text" placeholder="Search collection…" autocomplete="off">
+        <div class="view-toggle">
+          <button id="viewTextBtn" class="view-btn active">Text</button>
+          <button id="viewImagesBtn" class="view-btn">Images</button>
+        </div>
       </div>
 
       <div id="colGrid" class="col-grid"></div>
