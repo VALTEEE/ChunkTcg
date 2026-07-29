@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OSRS Chunk Roller</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=MedievalSharp&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app">
+
+    <!-- ══ HOME SCREEN ══ -->
+    <div id="screenHome" class="screen">
+
+      <header class="app-header">
+        <h1>OSRS Chunk Roller</h1>
+        <p>Rolls items, NPCs &amp; monsters from your live chunk map</p>
+      </header>
+
+      <div class="setup-section">
+        <div class="setup-step">
+          <span class="step-num">1</span>
+          <div class="step-body">
+            <strong>Drag this to your bookmarks bar</strong> (one-time setup)
+            <div class="bookmarklet-wrap">
+              <a id="bookmarklet"
+                 class="bookmarklet-link"
+                 href="javascript:(function(){if(typeof baseChunkData==='undefined'){alert('Chunk Picker not loaded yet — wait a few seconds and try again.');return;}var d={items:Object.keys(baseChunkData['items']||{}),npcs:Object.keys(baseChunkData['npcs']||{}),monsters:Object.keys(baseChunkData['monsters']||{})};fetch('http://127.0.0.1:7829/chunk-data',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}).then(function(){var t=document.title;document.title='\u2713 Sent to Chunk Roller!';setTimeout(function(){document.title=t;},2000);}).catch(function(){alert('Could not reach OSRS Chunk Roller. Make sure the app is open.');});})();"
+                 title="Drag me to your bookmarks bar">
+                ⚔ Send to Chunk Roller
+              </a>
+              <span class="drag-hint">← drag this</span>
+            </div>
+          </div>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">2</span>
+          <div class="step-body">
+            Open <a class="ext-link" href="https://source-chunk.github.io/chunk-picker-v2/?tunw" target="_blank">your chunk picker map</a> and wait for it to fully load
+          </div>
+        </div>
+        <div class="setup-step">
+          <span class="step-num">3</span>
+          <div class="step-body">
+            Click the <strong>Send to Chunk Roller</strong> bookmark — data arrives here instantly
+          </div>
+        </div>
+      </div>
+
+      <div id="waitStatus" class="wait-status">
+        <span class="pulse-dot"></span> Waiting for data from chunk picker…
+      </div>
+
+      <div class="controls">
+        <button id="refreshBtn" class="btn btn-primary hidden">Refresh Data</button>
+        <button id="roll5Btn" class="btn btn-gold" disabled>Roll 5</button>
+        <button id="openCollectionBtn" class="btn btn-primary">Collection</button>
+      </div>
+
+      <div id="dataInfo" class="data-info hidden">
+        <span><strong id="infoItems">0</strong> Items</span>
+        <span class="sep">·</span>
+        <span><strong id="infoNpcs">0</strong> NPCs</span>
+        <span class="sep">·</span>
+        <span><strong id="infoMonsters">0</strong> Monsters</span>
+        <span class="sep">·</span>
+        <span><strong id="infoTotal">0</strong> Total (deduplicated)</span>
+      </div>
+
+      <div id="rollResult" class="roll-result hidden">
+        <div id="cards" class="cards-grid"></div>
+        <div class="roll-actions">
+          <button id="copyRollBtn" class="btn-small">Copy Roll</button>
+          <button id="addToCollectionBtn" class="btn-small btn-small-gold">Add to Collection</button>
+        </div>
+      </div>
+
+      <div id="jsonSection" class="json-section hidden">
+        <button class="json-toggle" id="jsonToggle">
+          <span id="jsonToggleLabel">▶ Show Combined JSON</span>
+        </button>
+        <div id="jsonOutput" class="json-output hidden">
+          <div class="json-header">
+            <span id="jsonCount"></span>
+            <button id="copyBtn" class="btn-small">Copy JSON</button>
+          </div>
+          <div class="json-search-wrap">
+            <input id="jsonSearch" class="json-search" type="text" placeholder="Search items, NPCs, monsters…" autocomplete="off">
+            <span id="jsonSearchCount" class="json-search-count"></span>
+          </div>
+          <pre id="jsonContent"></pre>
+        </div>
+      </div>
+
+    </div><!-- /screenHome -->
+
+    <!-- ══ COLLECTION SCREEN ══ -->
+    <div id="screenCollection" class="screen hidden">
+
+      <div class="col-topbar">
+        <button id="backBtn" class="btn btn-primary">← Back</button>
+        <div class="col-title-wrap">
+          <h2 class="col-title">Collection</h2>
+          <span id="colStats" class="col-stats"></span>
+        </div>
+        <button id="copyCollectionBtn" class="btn btn-primary">Copy All</button>
+      </div>
+
+      <div class="col-toolbar">
+        <input id="colSearch" class="json-search" type="text" placeholder="Search collection…" autocomplete="off">
+      </div>
+
+      <div id="colGrid" class="col-grid"></div>
+
+    </div><!-- /screenCollection -->
+
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

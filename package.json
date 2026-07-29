@@ -1,0 +1,31 @@
+{
+  "name": "osrs-chunk-roller",
+  "version": "1.0.0",
+  "description": "OSRS Chunk Roller — fetch and roll items, NPCs & monsters",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "build": {
+    "appId": "com.osrs.chunkroller",
+    "productName": "OSRS Chunk Roller",
+    "win": {
+      "target": "dir",
+      "icon": "icon.ico",
+      "signingHashAlgorithms": [],
+      "sign": null
+    },
+    "files": [
+      "index.html",
+      "styles.css",
+      "app.js",
+      "main.js",
+      "preload.js"
+    ]
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  }
+}
