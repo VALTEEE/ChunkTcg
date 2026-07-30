@@ -410,6 +410,22 @@ body {
   min-height: 16px;
 }
 
+/* Room status indicator */
+.room-status {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 0.78rem;
+  font-family: 'Georgia', serif;
+  padding: 3px 10px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.room-status.disconnected { color: #7a6040; border-color: #3a2810; background: rgba(20,14,6,0.4); }
+.room-status.connecting   { color: #c8a030; border-color: #806020; background: rgba(40,30,10,0.4); }
+.room-status.connected    { color: #50c050; border-color: #206020; background: rgba(10,30,10,0.4); }
+.room-status.error        { color: #d05050; border-color: #602020; background: rgba(30,10,10,0.4); }
+
 /* ─── JSON section ─── */
 .json-section {
   border: 1px solid #2a1a08;
@@ -578,6 +594,8 @@ body {
 
 /* ─── Collection chips ─── */
 .col-chip {
+  display: flex;
+  align-items: center;
   padding: 5px 11px;
   border-radius: 3px;
   font-size: 0.78rem;
@@ -592,6 +610,52 @@ body {
 }
 
 .col-chip:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+
+.chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+
+/* "!" badge for manually added items */
+.chip-manual-badge {
+  flex-shrink: 0;
+  margin-left: 5px;
+  color: #f0c000;
+  font-weight: bold;
+  font-size: 0.82rem;
+  line-height: 1;
+  cursor: default;
+}
+
+/* "+" button on uncollected chips */
+.chip-add-btn {
+  flex-shrink: 0;
+  margin-left: 5px;
+  background: none;
+  border: 1px solid #5a4a2a;
+  border-radius: 3px;
+  color: #c8a96e;
+  font-size: 0.8rem;
+  line-height: 1;
+  padding: 1px 5px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chip-add-btn:hover {
+  background: rgba(200,169,110,0.25);
+  color: #f0d080;
+  border-color: #c8a96e;
+}
+
+/* Roll counter */
+.roll-counter {
+  text-align: center;
+  font-size: 0.78rem;
+  color: #7a6040;
+  margin-top: 6px;
+  font-family: 'Georgia', serif;
+  letter-spacing: 0.03em;
+}
+
+.roll-counter strong { color: #c8a96e; }
 
 /* Collected — colored by type */
 .col-chip.item    { background: rgba(20,50,100,0.45); color: #80b8ff; border-color: #2060c0; }
@@ -724,3 +788,81 @@ body {
 
 /* ─── Utility ─── */
 .hidden { display: none !important; }
+
+/* ─── Current Tasks panel ─── */
+.tasks-panel {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 240px;
+  max-height: calc(100vh - 32px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(12, 8, 4, 0.92);
+  border: 1px solid #5a4020;
+  border-radius: 5px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+  z-index: 1000;
+  font-family: 'Georgia', serif;
+}
+
+.tasks-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(30, 20, 8, 0.95);
+  border-bottom: 1px solid #3a2810;
+  border-radius: 5px 5px 0 0;
+  flex-shrink: 0;
+}
+
+.tasks-title {
+  font-size: 0.78rem;
+  color: #c8a96e;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tasks-collapse-btn {
+  background: none;
+  border: none;
+  color: #7a6040;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.15s;
+}
+
+.tasks-collapse-btn:hover { color: #c8a96e; }
+
+.tasks-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+  overflow-y: auto;
+  max-height: calc(100vh - 80px);
+  scrollbar-width: thin;
+  scrollbar-color: #3a2810 transparent;
+}
+
+.tasks-list li {
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  color: #b09060;
+  line-height: 1.4;
+  border-bottom: 1px solid rgba(58, 40, 16, 0.3);
+}
+
+.tasks-list li:last-child { border-bottom: none; }
+
+.tasks-list li:before {
+  content: '• ';
+  color: #c8a96e;
+}
+
+.tasks-empty {
+  color: #4a3820 !important;
+  font-style: italic;
+}

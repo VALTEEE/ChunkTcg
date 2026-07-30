@@ -7,4 +7,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onChunkData: (callback) => {
     ipcRenderer.on('chunk-data', (_event, data) => callback(data));
   },
+  fetchChunkData: (url) => ipcRenderer.invoke('fetch-chunk-data', url),
 });

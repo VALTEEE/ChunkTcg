@@ -59,6 +59,7 @@
         <button id="openCollectionBtn" class="btn btn-primary">Collection</button>
         <button id="safeModeBtn" class="btn btn-safemode active">Safe Mode: ON</button>
       </div>
+      <div id="rollCounter" class="roll-counter">Packs rolled: <strong id="rollCountNum">0</strong></div>
 
       <div id="dataInfo" class="data-info hidden">
         <span><strong id="infoItems">0</strong> Items</span>
@@ -95,6 +96,34 @@
             <button id="saveWebhookCollectionBtn" class="btn-small">Save</button>
           </div>
           <span id="webhookStatus" class="webhook-status"></span>
+        </div>
+      </div>
+
+      <!-- ── Room settings ── -->
+      <div class="discord-section">
+        <button class="json-toggle" id="roomToggle">
+          <span id="roomToggleLabel">▶ Room Settings</span>
+        </button>
+        <div id="roomPanel" class="discord-panel hidden">
+          <p class="discord-hint">
+            Connect with a friend to share your collection in real-time.<br>
+            You both need the same <strong>Room ID</strong> and <strong>Password</strong>.<br>
+            Requires a free <strong>Firebase Realtime Database</strong> — see README for setup.
+          </p>
+          <div class="discord-input-row">
+            <input id="chunkUrl" class="json-search" type="text" placeholder="Chunk URL — https://source-chunk.github.io/chunk-picker-v2/?cxdt" autocomplete="off">
+            <button id="saveChunkUrlBtn" class="btn-small">Save</button>
+          </div>
+          <div class="discord-input-row">
+            <input id="firebaseDbUrl" class="json-search" type="text" placeholder="Firebase DB URL — https://your-project-default-rtdb.firebaseio.com" autocomplete="off">
+            <button id="saveFirebaseBtn" class="btn-small">Save</button>
+          </div>
+          <div class="discord-input-row">
+            <input id="roomId" class="json-search" type="text" placeholder="Room ID (e.g. cxdt)" autocomplete="off" style="flex:1">
+            <input id="roomPassword" class="json-search" type="password" placeholder="Password" autocomplete="off" style="flex:1;margin-left:8px">
+            <button id="connectRoomBtn" class="btn-small btn-small-gold" style="margin-left:8px">Connect</button>
+          </div>
+          <div id="roomStatus" class="room-status disconnected">● Not connected</div>
         </div>
       </div>
 
@@ -146,6 +175,17 @@
 
   <!-- Toast notification -->
   <div id="toast" class="toast hidden"></div>
+
+  <!-- ══ CURRENT TASKS PANEL (fixed top-right) ══ -->
+  <div id="tasksPanel" class="tasks-panel">
+    <div class="tasks-header">
+      <span class="tasks-title">Current Tasks</span>
+      <button id="tasksCollapseBtn" class="tasks-collapse-btn" title="Collapse">−</button>
+    </div>
+    <ul id="tasksList" class="tasks-list">
+      <li class="tasks-empty">No active tasks loaded</li>
+    </ul>
+  </div>
 
   <script src="app.js"></script>
 </body>

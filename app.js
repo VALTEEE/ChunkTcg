@@ -16,15 +16,18 @@ const INITIAL_COLLECTION = [
   'Air rune','Wildblood seed','Watermelon seed','Nothing','Beer',
   'Iron bolts','coin pouch','coffin','zombie shirt','zombie boots',
   'Asgarnian seed','Clue scroll (medium)','Rum','Krandorian seed',
-  'Moon-lite','Gin','Coins','Bowl of water','Meat pie',
+  'Moon-lite','Gin','Coins','Bowl of water','Meat pie','Bronze axe',
 ];
 
 let combinedData = [];
 let fullNameArray = [];
-let lastRoll     = [];
-let jsonVisible  = false;
-let safeMode     = true;
-let sentThisRoll = false;
+let lastRoll      = [];
+let jsonVisible   = false;
+let safeMode      = true;
+let sentThisRoll  = false;
+let addedThisRoll = false;
+let currentTasks  = [];
+let rollCount     = parseInt(localStorage.getItem('osrs-roll-count') || '0', 10);
 
 function updateAddBtn() {
   const btn = document.getElementById('addToCollectionBtn');
@@ -32,6 +35,36 @@ function updateAddBtn() {
   const locked = safeMode && !sentThisRoll;
   btn.disabled = locked;
   btn.title    = locked ? 'Send list to Discord first (Safe Mode is ON)' : '';
+}
+
+function updateRollCounter() {
+  const el = document.getElementById('rollCountNum');
+  if (el) el.textContent = rollCount;
+}
+
+function renderTasks(tasks) {
+  currentTasks = tasks || [];
+  const list = document.getElementById('tasksList');
+  if (!list) return;
+  if (currentTasks.length === 0) {
+    list.innerHTML = '<li class="tasks-empty">No active tasks</li>';
+    return;
+  }
+  // Build all items in one innerHTML assignment — avoids repeated DOM ops for large lists
+  list.innerHTML = currentTasks
+    .map(t => `<li>${escapeHtml(t)}</li>`)
+    .join('');
+}
+
+// ─── Manual adds storage ───────────────────────────────────────────────────
+
+function loadManualAdds() {
+  const raw = localStorage.getItem('osrs-manual-adds');
+  return raw ? new Set(JSON.parse(raw)) : new Set();
+}
+
+function saveManualAdds(set) {
+  localStorage.setItem('osrs-manual-adds', JSON.stringify([...set]));
 }
 
 // ─── Collection storage ────────────────────────────────────────────────────
@@ -46,8 +79,15 @@ function loadCollection() {
   return JSON.parse(raw);
 }
 
-function saveCollection(names) {
+function _persistCollection(names) {
   localStorage.setItem('osrs-collection', JSON.stringify(names));
+}
+
+function saveCollection(names) {
+  _persistCollection(names);
+  if (fbConnected) {
+    fbPut('collection', names).catch(err => console.error('Firebase sync error:', err));
+  }
 }
 
 // Look up the type (item/npc/monster) for a name from the loaded pool.
@@ -142,6 +182,9 @@ function onDataReceived(raw) {
   combinedData  = processRawData(raw);
   fullNameArray = combinedData.map(d => d.name);
 
+  // Tasks come alongside chunk data when auto-fetched via hidden window
+  if (Array.isArray(raw.tasks)) renderTasks(raw.tasks);
+
   const itemCount    = combinedData.filter(d => d.type === 'item').length;
   const npcCount     = combinedData.filter(d => d.type === 'npc').length;
   const monsterCount = combinedData.filter(d => d.type === 'monster').length;
@@ -164,6 +207,11 @@ function onDataReceived(raw) {
   text('jsonSearchCount', '');
   document.getElementById('roll5Btn').disabled = false;
   show('refreshBtn');
+
+  // If collection screen is open, re-render it now that the full card pool is available
+  if (!document.getElementById('screenCollection').classList.contains('hidden')) {
+    renderCollection();
+  }
 }
 
 // ─── Collection rendering ──────────────────────────────────────────────────
@@ -273,11 +321,46 @@ async function renderCollection() {
   } else {
     // Text mode — chips
     grid.className = 'col-grid';
+    const manualAdds = loadManualAdds();
     displayItems.forEach(item => {
       const chip = document.createElement('div');
+      const isManual = manualAdds.has(item.name.toLowerCase());
       chip.className = `col-chip ${item.have ? item.type : 'missing'}`;
       chip.title     = item.name;
-      chip.textContent = item.name;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'chip-name';
+      nameSpan.textContent = item.name;
+      chip.appendChild(nameSpan);
+
+      if (item.have && isManual) {
+        const badge = document.createElement('span');
+        badge.className = 'chip-manual-badge';
+        badge.title = 'Manually added';
+        badge.textContent = '!';
+        chip.appendChild(badge);
+      }
+
+      if (!item.have) {
+        const addBtn = document.createElement('button');
+        addBtn.className = 'chip-add-btn';
+        addBtn.title = `Add "${item.name}" to collection`;
+        addBtn.textContent = '+';
+        addBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const col = loadCollection();
+          if (!col.map(n => n.toLowerCase()).includes(item.name.toLowerCase())) {
+            saveCollection([...col, item.name]);
+            const manual = loadManualAdds();
+            manual.add(item.name.toLowerCase());
+            saveManualAdds(manual);
+            showToast(`✓ "${item.name}" manually added`);
+            renderCollection();
+          }
+        });
+        chip.appendChild(addBtn);
+      }
+
       grid.appendChild(chip);
     });
   }
@@ -356,6 +439,7 @@ document.getElementById('addToCollectionBtn').addEventListener('click', () => {
   }
 
   saveCollection([...collection, ...newNames]);
+  addedThisRoll = true;
   showToast(`✓ ${newNames.length} new card${newNames.length > 1 ? 's' : ''} added to collection`);
 });
 
@@ -408,7 +492,6 @@ document.getElementById('refreshBtn').addEventListener('click', () => {
   fullNameArray = [];
   const waitEl = document.getElementById('waitStatus');
   waitEl.className = 'wait-status';
-  waitEl.innerHTML = '<span class="pulse-dot"></span> Waiting for data — click your bookmarklet on the chunk picker page…';
   hide('dataInfo');
   hide('jsonSection');
   hide('rollResult');
@@ -417,6 +500,15 @@ document.getElementById('refreshBtn').addEventListener('click', () => {
   document.getElementById('jsonOutput').classList.add('hidden');
   jsonVisible = false;
   text('jsonToggleLabel', '▶ Show Combined JSON');
+
+  // Auto-fetch if a URL is saved, otherwise fall back to bookmarklet message
+  const savedUrl = localStorage.getItem('osrs-chunk-url');
+  if (savedUrl && window.electronAPI?.fetchChunkData) {
+    waitEl.innerHTML = '<span class="pulse-dot"></span> Refreshing chunk data…';
+    autoFetchChunks();
+  } else {
+    waitEl.innerHTML = '<span class="pulse-dot"></span> Waiting for data — click your bookmarklet on the chunk picker page…';
+  }
 });
 
 // ─── Roll 5 ────────────────────────────────────────────────────────────────
@@ -445,6 +537,12 @@ function buildCard(pick, index) {
 }
 
 async function handleRoll5() {
+  // Warn if Discord was sent for the previous roll but items weren't added to collection
+  if (sentThisRoll && !addedThisRoll && lastRoll.length > 0) {
+    const ok = confirm('Are you sure you want to roll before adding your unique card(s) to your collection?');
+    if (!ok) return;
+  }
+
   const rollBtn   = document.getElementById('roll5Btn');
   const cardsGrid = document.getElementById('cards');
   rollBtn.disabled    = true;
@@ -452,8 +550,12 @@ async function handleRoll5() {
   show('rollResult');
 
   const picks = pickRandom5();
-  lastRoll = picks;
-  sentThisRoll = false;
+  lastRoll     = picks;
+  sentThisRoll  = false;
+  addedThisRoll = false;
+  rollCount++;
+  localStorage.setItem('osrs-roll-count', rollCount);
+  updateRollCounter();
   updateAddBtn();
 
   picks.forEach((pick, i) => cardsGrid.appendChild(buildCard(pick, i)));
@@ -606,3 +708,211 @@ document.getElementById('safeModeBtn').addEventListener('click', () => {
 if (window.electronAPI) {
   window.electronAPI.onChunkData(onDataReceived);
 }
+
+// ─── Firebase Realtime Database sync (REST + SSE) ──────────────────────────
+
+let fbDbUrl   = localStorage.getItem('osrs-firebase-db-url') || '';
+let fbRoomKey = '';                 // roomId + password combined
+let fbConnected  = false;
+let fbEventSource = null;
+let fbIgnoreNext  = false;          // suppress echo of our own writes
+
+function fbPath(sub) {
+  return `${fbDbUrl}/rooms/${fbRoomKey}/${sub}.json`;
+}
+
+async function fbGet(sub) {
+  const res = await fetch(fbPath(sub));
+  if (!res.ok) throw new Error(`Firebase read failed (${res.status})`);
+  return res.json();           // null if path doesn't exist yet
+}
+
+async function fbPut(sub, data) {
+  fbIgnoreNext = true;
+  const res = await fetch(fbPath(sub), {
+    method:  'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error(`Firebase write failed (${res.status})`);
+}
+
+function fbListen() {
+  if (fbEventSource) fbEventSource.close();
+  fbEventSource = new EventSource(fbPath('collection'));
+
+  fbEventSource.addEventListener('put', (e) => {
+    if (fbIgnoreNext) { fbIgnoreNext = false; return; }
+    const payload = JSON.parse(e.data);
+    if (!Array.isArray(payload.data)) return;
+
+    const local  = loadCollection();
+    const remote = payload.data;
+    // Only apply if different (avoid unnecessary re-renders)
+    if (JSON.stringify([...local].sort()) === JSON.stringify([...remote].sort())) return;
+
+    saveCollection(remote);
+    renderCollection();
+    showToast('↕ Collection synced from room');
+  });
+
+  fbEventSource.onerror = () => {
+    fbConnected = false;
+    updateRoomStatus('error');
+  };
+}
+
+async function connectRoom(dbUrl, roomId, password) {
+  fbDbUrl   = dbUrl.replace(/\/$/, '');
+  fbRoomKey = password ? `${roomId}-${password}` : roomId;
+  localStorage.setItem('osrs-firebase-db-url',       fbDbUrl);
+  localStorage.setItem('osrs-room-id',                roomId);
+  localStorage.setItem('osrs-room-password',          password);
+
+  updateRoomStatus('connecting');
+
+  const remoteCollection = await fbGet('collection');
+  const remoteManual     = await fbGet('manualAdds');
+
+  // Merge local + remote so nothing is lost on first connect
+  const localCollection = loadCollection();
+  const localManual     = loadManualAdds();
+  const merged          = [...new Set([...localCollection, ...(remoteCollection || [])])];
+  const mergedManual    = new Set([...localManual, ...(remoteManual || [])]);
+
+  saveCollection(merged);
+  saveManualAdds(mergedManual);
+
+  await fbPut('collection', merged);
+  await fbPut('manualAdds', [...mergedManual]);
+
+  fbConnected = true;
+  fbListen();
+  updateRoomStatus('connected');
+  renderCollection();
+  showToast('✓ Connected to room');
+}
+
+function updateRoomStatus(state) {
+  const el = document.getElementById('roomStatus');
+  if (!el) return;
+  const map = {
+    connected:   { cls: 'connected',   label: '● Connected' },
+    connecting:  { cls: 'connecting',  label: '◌ Connecting…' },
+    error:       { cls: 'error',       label: '● Connection lost' },
+    disconnected:{ cls: 'disconnected',label: '● Not connected' },
+  };
+  const s = map[state] || map.disconnected;
+  el.className = `room-status ${s.cls}`;
+  el.textContent = s.label;
+}
+
+// ─── Room Settings UI ──────────────────────────────────────────────────────
+
+// Populate saved values
+document.getElementById('firebaseDbUrl').value = fbDbUrl;
+document.getElementById('chunkUrl').value      = localStorage.getItem('osrs-chunk-url') || '';
+document.getElementById('roomId').value        = localStorage.getItem('osrs-room-id')   || '';
+// Don't pre-fill password for security
+
+let roomPanelVisible = false;
+document.getElementById('roomToggle').addEventListener('click', () => {
+  roomPanelVisible = !roomPanelVisible;
+  document.getElementById('roomPanel').classList.toggle('hidden', !roomPanelVisible);
+  document.getElementById('roomToggleLabel').textContent =
+    roomPanelVisible ? '▼ Room Settings' : '▶ Room Settings';
+});
+
+document.getElementById('saveChunkUrlBtn').addEventListener('click', () => {
+  const url = document.getElementById('chunkUrl').value.trim();
+  localStorage.setItem('osrs-chunk-url', url);
+  showToast('✓ Chunk URL saved — fetching data now…');
+  autoFetchChunks();
+});
+
+document.getElementById('saveFirebaseBtn').addEventListener('click', () => {
+  const url = document.getElementById('firebaseDbUrl').value.trim();
+  localStorage.setItem('osrs-firebase-db-url', url);
+  fbDbUrl = url;
+  showToast('✓ Firebase URL saved');
+});
+
+document.getElementById('connectRoomBtn').addEventListener('click', async () => {
+  const dbUrl    = document.getElementById('firebaseDbUrl').value.trim();
+  const roomId   = document.getElementById('roomId').value.trim();
+  const password = document.getElementById('roomPassword').value.trim();
+
+  if (!dbUrl)   { showToast('Enter your Firebase Database URL first'); return; }
+  if (!roomId)  { showToast('Enter a Room ID first'); return; }
+
+  const btn = document.getElementById('connectRoomBtn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+
+  try {
+    await connectRoom(dbUrl, roomId, password);
+    btn.textContent = 'Connected!';
+  } catch (err) {
+    showToast(`✗ Could not connect: ${err.message}`);
+    updateRoomStatus('error');
+    btn.textContent = 'Connect';
+    btn.disabled = false;
+  }
+});
+
+// ─── Auto-connect: fetch chunk data on startup if URL is saved ─────────────
+
+async function autoFetchChunks() {
+  const url = localStorage.getItem('osrs-chunk-url')
+           || document.getElementById('chunkUrl')?.value.trim();
+
+  const waitEl = document.getElementById('waitStatus');
+
+  if (!url) {
+    waitEl.innerHTML = '<span class="pulse-dot"></span> No chunk URL saved — enter it in Room Settings';
+    return;
+  }
+  if (!window.electronAPI?.fetchChunkData) {
+    waitEl.innerHTML = '<span class="pulse-dot"></span> Waiting for data — click your bookmarklet on the chunk picker page…';
+    return;
+  }
+
+  waitEl.innerHTML = '<span class="pulse-dot"></span> Auto-loading chunk data…';
+
+  try {
+    const data = await window.electronAPI.fetchChunkData(url);
+    onDataReceived(data);
+  } catch (err) {
+    waitEl.innerHTML = `<span class="pulse-dot"></span> Auto-load failed (${err.message}) — use bookmarklet instead`;
+    console.error('Auto-fetch failed:', err);
+  }
+}
+
+// Auto-reconnect to Firebase room if credentials are saved
+async function autoConnectRoom() {
+  const dbUrl    = localStorage.getItem('osrs-firebase-db-url');
+  const roomId   = localStorage.getItem('osrs-room-id');
+  const password = localStorage.getItem('osrs-room-password') || '';
+  if (!dbUrl || !roomId) return;
+  try {
+    await connectRoom(dbUrl, roomId, password);
+  } catch (err) {
+    console.error('Auto room connect failed:', err);
+    updateRoomStatus('error');
+  }
+}
+
+updateRollCounter();
+autoFetchChunks();
+autoConnectRoom();
+
+// ─── Tasks panel collapse toggle ───────────────────────────────────────────
+
+let tasksPanelCollapsed = false;
+document.getElementById('tasksCollapseBtn').addEventListener('click', () => {
+  tasksPanelCollapsed = !tasksPanelCollapsed;
+  const list = document.getElementById('tasksList');
+  const btn  = document.getElementById('tasksCollapseBtn');
+  list.classList.toggle('hidden', tasksPanelCollapsed);
+  btn.textContent = tasksPanelCollapsed ? '+' : '−';
+});
